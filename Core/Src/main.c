@@ -20,6 +20,7 @@
 #include "main.h"
 #include "dma.h"
 #include "i2c.h"
+#include "spi.h"
 #include "tim.h"
 #include "usart.h"
 #include "gpio.h"
@@ -28,6 +29,7 @@
 /* USER CODE BEGIN Includes */
 #include "bsp_servos.h"
 #include "bsp_imu.h"
+#include "bsp_nrf24.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -101,6 +103,7 @@ int main(void)
   MX_TIM8_Init();
   MX_TIM12_Init();
   MX_I2C1_Init();
+  MX_SPI2_Init();
   /* USER CODE BEGIN 2 */
 
   // 1. Init Servos (This starts all timers)
@@ -113,6 +116,10 @@ int main(void)
 
       Error_Handler();
   }
+
+  // 3. Init nrf24l01
+  BSP_NRF_Init();
+  BSP_NRF_StartListening();
 
 
   /* USER CODE END 2 */
@@ -193,7 +200,30 @@ void SystemClock_Config(void)
 }
 
 /* USER CODE BEGIN 4 */
+void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
+{
+    // PC3 is the NRF IRQ Pin
+    if (GPIO_Pin == GPIO_PIN_3)
+    {
+        if (BSP_NRF_DataReady())
+        {
+            uint8_t rx_buffer[32];
+            BSP_NRF_ReadPacket(rx_buffer);
 
+            // --- DATA RECEIVED! ---
+            // rx_buffer[0] = delay_time2
+            // rx_buffer[1] = walk command
+            // rx_buffer[2] = init command
+            // ... map these to the robot variables later ...
+
+            // --- SEND TELEMETRY BACK ---
+            // Create a dummy packet for now
+            uint8_t telem_buffer[32] = {0};
+            telem_buffer[0] = 77; // Example battery level
+            BSP_NRF_WriteAckPayload(1, telem_buffer, 32);
+        }
+    }
+}
 /* USER CODE END 4 */
 
 /**
