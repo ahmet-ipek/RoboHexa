@@ -18,13 +18,16 @@
 /* USER CODE END Header */
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
+#include "dma.h"
+#include "i2c.h"
 #include "tim.h"
 #include "usart.h"
 #include "gpio.h"
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-
+#include "bsp_servos.h"
+#include "bsp_imu.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -45,7 +48,8 @@
 /* Private variables ---------------------------------------------------------*/
 
 /* USER CODE BEGIN PV */
-
+uint16_t x=1500, a=0, b=0;
+MPU6050_Data_t sensor_data;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -88,6 +92,7 @@ int main(void)
 
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
+  MX_DMA_Init();
   MX_USART2_UART_Init();
   MX_TIM1_Init();
   MX_TIM2_Init();
@@ -95,7 +100,20 @@ int main(void)
   MX_TIM4_Init();
   MX_TIM8_Init();
   MX_TIM12_Init();
+  MX_I2C1_Init();
   /* USER CODE BEGIN 2 */
+
+  // 1. Init Servos (This starts all timers)
+  BSP_Servo_Init();
+
+  // 2. Init IMU
+  if (BSP_IMU_Init() == 1) {
+	  x=99;
+  } else {
+
+      Error_Handler();
+  }
+
 
   /* USER CODE END 2 */
 
@@ -103,6 +121,16 @@ int main(void)
   /* USER CODE BEGIN WHILE */
   while (1)
   {
+//	  BSP_Servo_Write(1-1,2-1, x);
+	  // 1. Trigger non-blocking read
+	  BSP_IMU_Start_Read_DMA();
+
+	  // 2. Do other logic (CPU is free here!)
+	  // For example, verify data:
+	  sensor_data = BSP_IMU_Get_Data();
+
+
+	  HAL_Delay(20); // Maintain ~50Hz loop rate
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
