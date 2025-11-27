@@ -1,0 +1,18 @@
+# STM32CubeIDE specific
+/Debug/
+/Release/
+/settings/
+.project
+.cproject
+.mxproject
+*.launch
+*.ioc.bak
+
+# Compilation artifacts
+*.o
+*.su
+*.elf
+*.bin
+*.hex
+*.map
+*.list
