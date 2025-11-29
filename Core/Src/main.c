@@ -50,7 +50,7 @@
 /* Private variables ---------------------------------------------------------*/
 
 /* USER CODE BEGIN PV */
-uint16_t x=1500, a=0, b=0;
+uint16_t x=1500, a=1, b=1;
 MPU6050_Data_t sensor_data;
 /* USER CODE END PV */
 
@@ -109,17 +109,17 @@ int main(void)
   // 1. Init Servos (This starts all timers)
   BSP_Servo_Init();
 
-  // 2. Init IMU
-  if (BSP_IMU_Init() == 1) {
-	  x=99;
-  } else {
-
-      Error_Handler();
-  }
-
-  // 3. Init nrf24l01
-  BSP_NRF_Init();
-  BSP_NRF_StartListening();
+//  // 2. Init IMU
+//  if (BSP_IMU_Init() == 1) {
+//	  x=99;
+//  } else {
+//
+//      Error_Handler();
+//  }
+//
+//  // 3. Init nrf24l01
+//  BSP_NRF_Init();
+//  BSP_NRF_StartListening();
 
 
   /* USER CODE END 2 */
@@ -128,16 +128,16 @@ int main(void)
   /* USER CODE BEGIN WHILE */
   while (1)
   {
-//	  BSP_Servo_Write(1-1,2-1, x);
-	  // 1. Trigger non-blocking read
-	  BSP_IMU_Start_Read_DMA();
-
-	  // 2. Do other logic (CPU is free here!)
-	  // For example, verify data:
-	  sensor_data = BSP_IMU_Get_Data();
-
-
-	  HAL_Delay(20); // Maintain ~50Hz loop rate
+	  BSP_Servo_Write(a-1,b-1, x);
+//	  // 1. Trigger non-blocking read
+//	  BSP_IMU_Start_Read_DMA();
+//
+//	  // 2. Do other logic (CPU is free here!)
+//	  // For example, verify data:
+//	  sensor_data = BSP_IMU_Get_Data();
+//
+//
+//	  HAL_Delay(20); // Maintain ~50Hz loop rate
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
