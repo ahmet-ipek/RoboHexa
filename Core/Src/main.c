@@ -30,6 +30,8 @@
 #include "bsp_servos.h"
 #include "bsp_imu.h"
 #include "bsp_nrf24.h"
+#include "kalman_filter.h"
+#include <math.h>
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -52,6 +54,12 @@
 /* USER CODE BEGIN PV */
 uint16_t x=1500, a=1, b=1;
 MPU6050_Data_t sensor_data;
+
+Kalman_t KalmanPitch;
+Kalman_t KalmanRoll;
+float Robot_Pitch = 0.0f;
+float Robot_Roll = 0.0f;
+uint32_t last_tick = 0; // For dt calculation
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -109,17 +117,22 @@ int main(void)
   // 1. Init Servos (This starts all timers)
   BSP_Servo_Init();
 
-//  // 2. Init IMU
-//  if (BSP_IMU_Init() == 1) {
-//	  x=99;
-//  } else {
-//
-//      Error_Handler();
-//  }
+  // 2. Init IMU
+  if (BSP_IMU_Init() == 1) {
+	  x=99;
+  } else {
+
+      Error_Handler();
+  }
 //
 //  // 3. Init nrf24l01
 //  BSP_NRF_Init();
 //  BSP_NRF_StartListening();
+
+  // 4. Init Kalman
+  Kalman_Init(&KalmanPitch);
+  Kalman_Init(&KalmanRoll);
+  last_tick = HAL_GetTick();
 
 
   /* USER CODE END 2 */
@@ -128,16 +141,33 @@ int main(void)
   /* USER CODE BEGIN WHILE */
   while (1)
   {
-	  BSP_Servo_Write(a-1,b-1, x);
-//	  // 1. Trigger non-blocking read
-//	  BSP_IMU_Start_Read_DMA();
-//
-//	  // 2. Do other logic (CPU is free here!)
-//	  // For example, verify data:
-//	  sensor_data = BSP_IMU_Get_Data();
-//
-//
-//	  HAL_Delay(20); // Maintain ~50Hz loop rate
+//	  BSP_Servo_Write(a-1,b-1, x);
+	  // 1. Get raw data from BSP
+	  BSP_IMU_Start_Read_DMA();
+
+	  MPU6050_Data_t raw = BSP_IMU_Get_Data();
+
+	  // 2. Calculate dt (Delta Time in Seconds)
+	  uint32_t current_tick = HAL_GetTick();
+	  float dt = (current_tick - last_tick) / 1000.0f;
+	  if(dt < 0.001f) dt = 0.001f; // Safety
+	  last_tick = current_tick;
+
+	  // 3. Calculate Raw Accelerometer Angles
+	      float accel_roll = atan2f((float)raw.Accel_Y_RAW, (float)raw.Accel_Z_RAW) * 57.296f;
+	      float accel_pitch = atan2f(-(float)raw.Accel_X_RAW,
+	                                 sqrtf((float)raw.Accel_Y_RAW*(float)raw.Accel_Y_RAW +
+	                                       (float)raw.Accel_Z_RAW*(float)raw.Accel_Z_RAW)
+	                                 	 	 	 	 	 	 	 	 	 	 	 	 	 ) * 57.296f;
+
+	      // 4. Convert Gyro to Deg/Sec
+	      float gyro_roll_rate  = (float)raw.Gyro_X_RAW / 131.0f;
+	      float gyro_pitch_rate = (float)raw.Gyro_Y_RAW / 131.0f;
+
+	  // 5. Run Kalman Filter
+	  Robot_Roll  = Kalman_Update(&KalmanRoll,  accel_roll,  gyro_roll_rate,  dt);
+	  Robot_Pitch = Kalman_Update(&KalmanPitch, accel_pitch, gyro_pitch_rate, dt);
+
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
