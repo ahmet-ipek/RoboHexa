@@ -18,12 +18,12 @@
 
 // Leg Identifiers
 typedef enum {
-    LEG_RF = 0, // Right Front
-    LEG_RM,     // Right Middle
-    LEG_RB,     // Right Back
-    LEG_LF,     // Left Front
-    LEG_LM,     // Left Middle
-    LEG_LB      // Left Back
+    LEG_RF = 0,
+    LEG_LF = 1,
+    LEG_RM = 2,
+    LEG_LM = 3,
+    LEG_RB = 4,
+    LEG_LB = 5
 } Hexapod_Leg_ID;
 
 // Joint Identifiers

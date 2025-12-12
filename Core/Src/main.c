@@ -31,6 +31,8 @@
 #include "bsp_imu.h"
 #include "bsp_nrf24.h"
 #include "kalman_filter.h"
+#include "leg_manager.h"
+#include "leg_ik.h"
 #include <math.h>
 /* USER CODE END Includes */
 
@@ -52,8 +54,15 @@
 /* Private variables ---------------------------------------------------------*/
 
 /* USER CODE BEGIN PV */
-uint16_t x=1500, a=1, b=1;
+uint8_t Leg=0, joint=0;
+uint16_t pulse_us=1500;
+float x=0.0, y=0.0, z=0.0; // x, y and z coordinates of the body centered frame in (mm).
+float angle = 0.0; // angle of rotation in degrees.
+
+
 MPU6050_Data_t sensor_data;
+
+
 
 Kalman_t KalmanPitch;
 Kalman_t KalmanRoll;
@@ -116,23 +125,24 @@ int main(void)
 
   // 1. Init Servos (This starts all timers)
   BSP_Servo_Init();
+  Leg_System_Init();
 
-  // 2. Init IMU
-  if (BSP_IMU_Init() == 1) {
-	  x=99;
-  } else {
-
-      Error_Handler();
-  }
+//  // 2. Init IMU
+//  if (BSP_IMU_Init() == 1) {
+//	  x=99;
+//  } else {
+//
+//      Error_Handler();
+//  }
 //
 //  // 3. Init nrf24l01
 //  BSP_NRF_Init();
 //  BSP_NRF_StartListening();
 
-  // 4. Init Kalman
-  Kalman_Init(&KalmanPitch);
-  Kalman_Init(&KalmanRoll);
-  last_tick = HAL_GetTick();
+//  // 4. Init Kalman
+//  Kalman_Init(&KalmanPitch);
+//  Kalman_Init(&KalmanRoll);
+//  last_tick = HAL_GetTick();
 
 
   /* USER CODE END 2 */
@@ -141,32 +151,37 @@ int main(void)
   /* USER CODE BEGIN WHILE */
   while (1)
   {
-//	  BSP_Servo_Write(a-1,b-1, x);
-	  // 1. Get raw data from BSP
-	  BSP_IMU_Start_Read_DMA();
 
-	  MPU6050_Data_t raw = BSP_IMU_Get_Data();
 
-	  // 2. Calculate dt (Delta Time in Seconds)
-	  uint32_t current_tick = HAL_GetTick();
-	  float dt = (current_tick - last_tick) / 1000.0f;
-	  if(dt < 0.001f) dt = 0.001f; // Safety
-	  last_tick = current_tick;
+//	  Leg_Set_Angle(LEG_RM , JOINT_COXA, angle);
 
-	  // 3. Calculate Raw Accelerometer Angles
-	      float accel_roll = atan2f((float)raw.Accel_Y_RAW, (float)raw.Accel_Z_RAW) * 57.296f;
-	      float accel_pitch = atan2f(-(float)raw.Accel_X_RAW,
-	                                 sqrtf((float)raw.Accel_Y_RAW*(float)raw.Accel_Y_RAW +
-	                                       (float)raw.Accel_Z_RAW*(float)raw.Accel_Z_RAW)
-	                                 	 	 	 	 	 	 	 	 	 	 	 	 	 ) * 57.296f;
+	  Leg_Move_To_XYZ(LEG_RM, x, y, z);
 
-	      // 4. Convert Gyro to Deg/Sec
-	      float gyro_roll_rate  = (float)raw.Gyro_X_RAW / 131.0f;
-	      float gyro_pitch_rate = (float)raw.Gyro_Y_RAW / 131.0f;
-
-	  // 5. Run Kalman Filter
-	  Robot_Roll  = Kalman_Update(&KalmanRoll,  accel_roll,  gyro_roll_rate,  dt);
-	  Robot_Pitch = Kalman_Update(&KalmanPitch, accel_pitch, gyro_pitch_rate, dt);
+//	  // 1. Get raw data from BSP
+//	  BSP_IMU_Start_Read_DMA();
+//
+//	  MPU6050_Data_t raw = BSP_IMU_Get_Data();
+//
+//	  // 2. Calculate dt (Delta Time in Seconds)
+//	  uint32_t current_tick = HAL_GetTick();
+//	  float dt = (current_tick - last_tick) / 1000.0f;
+//	  if(dt < 0.001f) dt = 0.001f; // Safety
+//	  last_tick = current_tick;
+//
+//	  // 3. Calculate Raw Accelerometer Angles
+//	      float accel_roll = atan2f((float)raw.Accel_Y_RAW, (float)raw.Accel_Z_RAW) * 57.296f;
+//	      float accel_pitch = atan2f(-(float)raw.Accel_X_RAW,
+//	                                 sqrtf((float)raw.Accel_Y_RAW*(float)raw.Accel_Y_RAW +
+//	                                       (float)raw.Accel_Z_RAW*(float)raw.Accel_Z_RAW)
+//	                                 	 	 	 	 	 	 	 	 	 	 	 	 	 ) * 57.296f;
+//
+//	      // 4. Convert Gyro to Deg/Sec
+//	      float gyro_roll_rate  = (float)raw.Gyro_X_RAW / 131.0f;
+//	      float gyro_pitch_rate = (float)raw.Gyro_Y_RAW / 131.0f;
+//
+//	  // 5. Run Kalman Filter
+//	  Robot_Roll  = Kalman_Update(&KalmanRoll,  accel_roll,  gyro_roll_rate,  dt);
+//	  Robot_Pitch = Kalman_Update(&KalmanPitch, accel_pitch, gyro_pitch_rate, dt);
 
     /* USER CODE END WHILE */
 
