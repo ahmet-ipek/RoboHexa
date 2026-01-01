@@ -34,6 +34,7 @@
 #include "leg_manager.h"
 #include "leg_ik.h"
 #include "init_emotes.h"
+#include "gait_scheduler.h"
 #include <math.h>
 /* USER CODE END Includes */
 
@@ -89,7 +90,19 @@ uint8_t debug_walk_on = 0;
 float debug_stride_x  = 0.0f; // Strafing (mm)
 float debug_stride_y  = 0.0f; // Walking Forward (mm)
 float debug_turn_deg  = 0.0f; // Turning (deg)
-float debug_speed     = 5.0f; // Smoothness (0.01 = Slow, 0.05 = Fast)
+float debug_speed     = 0.5f; // Smoothness
+float debug_accel     = 150.0f; // Smoothness
+
+BodyPose_t test_pose = {0};
+
+// 1. Control Inputs (Volatile is mandatory for variables shared with Interrupts)
+volatile float joy_stride_x_mm = 0.0f;
+volatile float joy_stride_y_mm = 0.0f; // Start with 0 (Stand still)
+volatile float joy_turn_deg    = 0.0f;
+volatile uint8_t joy_gait    = 0;
+
+// 2. The Gait Engine Instance
+Gait_State_t robot_gait;
 
 /* USER CODE END PV */
 
@@ -101,7 +114,18 @@ void SystemClock_Config(void);
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
-
+// --- THE DETERMINISTIC PHYSICS LOOP (50Hz) ---
+// This fires automatically every 20ms.
+void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
+{
+    // Check if it's TIM6 (in case you use others)
+    if (htim->Instance == TIM6)
+    {
+        // Run the Gait Engine
+        // Note: dt is hardcoded to 0.02f because the timer guarantees this exact interval.
+        Gait_Update(&robot_gait, joy_stride_x_mm, joy_stride_y_mm, joy_turn_deg, joy_gait, 0.02f);
+    }
+}
 /* USER CODE END 0 */
 
 /**
@@ -144,12 +168,13 @@ int main(void)
   MX_TIM12_Init();
   MX_I2C1_Init();
   MX_SPI2_Init();
+  MX_TIM6_Init();
   /* USER CODE BEGIN 2 */
 
   // 1. Hardware Init: Start PWM Timers
     BSP_Servo_Init();
 
-    // 2. Init Middleware (Math & Physics)
+  // 2. Init Middleware (Math & Physics)
     Leg_System_Init();
 
     Servo_State_Init();
@@ -157,7 +182,13 @@ int main(void)
 
     Robot_Init();
 
-  // 2. Init IMU
+    // 3. Gait Init
+    Gait_Init(&robot_gait);
+
+    // 4. Start the Physics Timer
+    HAL_TIM_Base_Start_IT(&htim6);
+
+  // 5. Init IMU
   if (BSP_IMU_Init() == 1) {
 	  work=99;
   } else {
@@ -169,10 +200,13 @@ int main(void)
 //  BSP_NRF_Init();
 //  BSP_NRF_StartListening();
 
-  // 4. Init Kalman
+  // 6. Init Kalman
   Kalman_Init(&KalmanPitch);
   Kalman_Init(&KalmanRoll);
   last_tick = HAL_GetTick();
+
+  // Set default height
+//    test_pose.z = -100.0f;
 
 
   /* USER CODE END 2 */
@@ -181,24 +215,6 @@ int main(void)
   /* USER CODE BEGIN WHILE */
   while (1)
   {
-
-
-//	  Leg_Set_Angle(Leg , joint, angle);
-
-//	  Leg_Move_To_XYZ(LEG_RM, x, y, z);
-//	  for (int i=0; i<HEXAPOD_LEG_COUNT; i++){
-//		  Leg_Move_To_XYZ(i, x, y, z);
-//	  }
-
-	  // 5. The Brain Tick
-	        // Calculates the Sine Wave trajectory for this specific moment in time
-	        // and updates all 18 servos via Leg_Move_To_XYZ.
-//	        Gait_Update();
-
-	        // 6. Loop Timing (50Hz)
-	        // 1000ms / 50 = 20ms period.
-	        // This controls the speed of the physics engine.
-//	        HAL_Delay(20);
 
 	  // 1. Get raw data from BSP
 	  BSP_IMU_Start_Read_DMA();
@@ -212,24 +228,31 @@ int main(void)
 	  last_tick = current_tick;
 
 	  // 3. Calculate Raw Accelerometer Angles
-	      float accel_roll = atan2f((float)raw.Accel_Y_RAW, (float)raw.Accel_Z_RAW) * 57.296f;
-	      float accel_pitch = atan2f(-(float)raw.Accel_X_RAW,
+	  float accel_roll = atan2f((float)raw.Accel_Y_RAW, (float)raw.Accel_Z_RAW) * 57.296f;
+	  float accel_pitch = atan2f(-(float)raw.Accel_X_RAW,
 	                                 sqrtf((float)raw.Accel_Y_RAW*(float)raw.Accel_Y_RAW +
 	                                       (float)raw.Accel_Z_RAW*(float)raw.Accel_Z_RAW)
 	                                 	 	 	 	 	 	 	 	 	 	 	 	 	 ) * 57.296f;
 
-	      // 4. Convert Gyro to Deg/Sec
-	      float gyro_roll_rate  = (float)raw.Gyro_X_RAW / 131.0f;
-	      float gyro_pitch_rate = (float)raw.Gyro_Y_RAW / 131.0f;
+	  // 4. Convert Gyro to Deg/Sec
+	  float gyro_roll_rate  = (float)raw.Gyro_X_RAW / 131.0f;
+	  float gyro_pitch_rate = (float)raw.Gyro_Y_RAW / 131.0f;
 
 	  // 5. Run Kalman Filter
-	  Robot_Roll  = Kalman_Update(&KalmanRoll,  accel_roll,  gyro_roll_rate,  dt)-1;
-	  Robot_Pitch = Kalman_Update(&KalmanPitch, accel_pitch, gyro_pitch_rate, dt)-1;
+	  Robot_Roll  = Kalman_Update(&KalmanRoll,  accel_roll,  gyro_roll_rate,  dt);
+	  Robot_Pitch = Kalman_Update(&KalmanPitch, accel_pitch, gyro_pitch_rate, dt);
+
+
+	  // 4. Update the Gait Engine
+	  robot_gait.ground_speed = debug_speed;
+	  robot_gait.accel_rate = debug_accel;
+
 
 //	  Leg_Set_Angle_Smoothly(Leg, joint, Servo_Get_Current(Leg, joint), angle, debug_speed, dt) ;
 //	  Leg_Move_To_XYZ_Smoothly(Leg, x, y, z, debug_speed, dt);
+//	  Leg_Update_Pose(test_pose);
 
-	  HAL_Delay(20);
+//	  HAL_Delay(20);
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */

@@ -7,9 +7,14 @@
 #define LEG_MANAGER_H
 
 #include <stdint.h>
-#include "bsp_servos.h" // Needed for Hexapod_Leg_ID enum
+#include "bsp_servos.h"
+#include "leg_ik.h"
 
 extern const float SERVO_NEUTRAL[HEXAPOD_LEG_COUNT][JOINTS_PER_LEG];
+
+// Standard "Home" offsets (from previous calibration steps)
+extern float home_x_mm[6];
+extern float home_y_mm[6];
 
 /**
  * @brief  Initializes the Leg System.
@@ -52,6 +57,26 @@ void Leg_Set_Angle_Smoothly(Hexapod_Leg_ID leg, Hexapod_Joint_ID joint, float *c
  */
 void Servo_State_Init(void);
 
+/**
+ * @brief Get the current angle of a servo joint.
+ *
+ * Returns a pointer to the internal state variable that stores the
+ * current angle of the specified joint. This value is typically updated
+ * by the servo feedback system and is used by the speed control algorithm.
+ *
+ * @param leg   Hexapod leg identifier.
+ * @param joint Joint identifier within the leg.
+ *
+ * @return Pointer to the current joint angle.
+ *         Units: degrees.
+ */
 float* Servo_Get_Current(Hexapod_Leg_ID leg, Hexapod_Joint_ID joint);
+
+/**
+ * @brief  Updates all 6 legs to match the desired body pose.
+ * Automatically handles all 18 servos.
+ * @param  pose  Target body position and orientation.
+ */
+void Leg_Update_Pose(BodyPose_t pose);
 
 #endif /* LEG_MANAGER_H */

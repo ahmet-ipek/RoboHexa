@@ -88,3 +88,60 @@ LegAngles_t Hexapod_SolveIK(HexapodLeg_t *leg, Point3D_t target_body) {
 
         return angles;
 }
+
+
+/* * CORRECTED for User Definitions:
+ * Pitch = X Axis
+ * Roll  = Y Axis
+ * Yaw   = Z Axis
+ */
+Point3D_t Hexapod_Compute_Body_Transform(Point3D_t p_foot_neutral, BodyPose_t pose) {
+    Point3D_t p_out;
+
+    // 1. We are calculating the foot position RELATIVE to the Body.
+    // If Body Rotates +Angle, the Foot (Ground) Rotates -Angle relative to Body.
+    float rad_pitch = -(pose.pitch * (M_PI / 180.0f)); // Rotation around X
+    float rad_roll  = -(pose.roll  * (M_PI / 180.0f)); // Rotation around Y
+    float rad_yaw   = -(pose.yaw   * (M_PI / 180.0f)); // Rotation around Z
+
+    // Pre-calculate Sines and Cosines
+    float c_x = cosf(rad_pitch);
+    float s_x = sinf(rad_pitch);
+    float c_y = cosf(rad_roll);
+    float s_y = sinf(rad_roll);
+    float c_z = cosf(rad_yaw);
+    float s_z = sinf(rad_yaw);
+
+    // Initial Coordinates
+    float x = p_foot_neutral.x;
+    float y = p_foot_neutral.y;
+    float z = p_foot_neutral.z;
+
+    // --- ORDER OF ROTATION: YAW(Z) -> ROLL(Y) -> PITCH(X) ---
+    // (This order is generally safe for small angles)
+
+    // 1. Yaw (Z-Axis)
+    float x1 = x * c_z - y * s_z;
+    float y1 = x * s_z + y * c_z;
+    float z1 = z;
+
+    // 2. Roll (Y-Axis) - User Defined Roll
+    // Standard rotation around Y: x' = x*c + z*s; z' = -x*s + z*c
+    float x2 = x1 * c_y + z1 * s_y;
+    float y2 = y1;
+    float z2 = -x1 * s_y + z1 * c_y;
+
+    // 3. Pitch (X-Axis) - User Defined Pitch
+    // Standard rotation around X: y' = y*c - z*s; z' = y*s + z*c
+    float x3 = x2;
+    float y3 = y2 * c_x - z2 * s_x;
+    float z3 = y2 * s_x + z2 * c_x;
+
+    // --- TRANSLATION ---
+    // If Body moves +X, Foot relative position moves -X
+    p_out.x = x3 - pose.x;
+    p_out.y = y3 - pose.y;
+    p_out.z = z3 - pose.z; // This offsets the Z height logic slightly, see note below
+
+    return p_out;
+}

@@ -1,6 +1,4 @@
 #include "leg_manager.h"
-#include "leg_ik.h"
-#include "bsp_servos.h"
 #include <math.h>
 
 #define RAD_TO_DEG 57.2957795f
@@ -15,8 +13,8 @@
 #define DEFAULT_STANCE_RADIUS_MM  110.0f
 
 // Standard "Home" offsets (from previous calibration steps)
-static float home_x_mm[6];
-static float home_y_mm[6];
+float home_x_mm[6];
+float home_y_mm[6];
 
 // --- CALIBRATION DATA ---
 typedef struct {
@@ -259,4 +257,54 @@ void Leg_Move_To_XYZ_Smoothly(Hexapod_Leg_ID leg_id, float x_offset_mm, float y_
  */
 void Leg_Set_Angle(Hexapod_Leg_ID leg, Hexapod_Joint_ID joint, float angle_deg) {
     BSP_Servo_Write(leg, joint, Angle_To_Pulse(leg, joint, angle_deg));
+}
+
+
+void Leg_Update_Pose(BodyPose_t pose) {
+    for (int i = 0; i < HEXAPOD_LEG_COUNT; i++) {
+
+        // 1. Start with the Neutral Foot Position
+        Point3D_t foot_vector;
+        foot_vector.x = home_x_mm[i];
+        foot_vector.y = home_y_mm[i];
+
+        // CRITICAL FIX: The vector MUST start at the foot tip (e.g. -100mm)
+        // If we use 0, the rotation has no "lever arm" to swing the leg.
+        // We use the 'z' from the pose command itself as the baseline.
+        foot_vector.z = pose.z;
+
+        // 2. Rotate this vector by the INVERSE of the Body Rotation
+        // (Handled inside Hexapod_Compute_Body_Transform now)
+        // IMPORTANT: We pass a 'zeroed' pose for translation to the helper
+        // because we want to rotate the vector in place first,
+        // then apply translation manually if needed, or let the function handle it.
+        // Let's use the function fully:
+
+        // We temporarily zero the Z translation in the pose passed to the math
+        // because we already put the Z-depth into 'foot_vector.z'.
+        // If we don't do this, we might double-count the height.
+        BodyPose_t rotation_only = pose;
+        rotation_only.x = 0;
+        rotation_only.y = 0;
+        rotation_only.z = 0; // We handle Z height via the vector start point
+
+        Point3D_t target = Hexapod_Compute_Body_Transform(foot_vector, rotation_only);
+
+        // 3. Add Body Translation (Walking/Shifting)
+        // If Body moves Forward (+Y), Feet move Backward (-Y) relative to Body.
+        target.x -= pose.x;
+        target.y -= pose.y;
+        // target.z is already correct because foot_vector.z started at pose.z
+        // and rotated.
+
+        // 4. Solve IK
+        LegAngles_t rads = Hexapod_SolveIK(&legs[i], target);
+
+        // 5. Move Servos
+        if (rads.is_reachable) {
+             BSP_Servo_Write(i, JOINT_COXA,  Angle_To_Pulse(i, JOINT_COXA,  rads.theta1 * 57.2958f));
+             BSP_Servo_Write(i, JOINT_FEMUR, Angle_To_Pulse(i, JOINT_FEMUR, rads.theta2 * 57.2958f));
+             BSP_Servo_Write(i, JOINT_TIBIA, Angle_To_Pulse(i, JOINT_TIBIA, rads.theta3 * 57.2958f));
+        }
+    }
 }
