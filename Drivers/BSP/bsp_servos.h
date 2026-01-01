@@ -33,6 +33,7 @@ typedef enum {
     JOINT_TIBIA     // Shin
 } Hexapod_Joint_ID;
 
+
 // Function Prototypes
 void BSP_Servo_Init(void);
 void BSP_Servo_Write(Hexapod_Leg_ID leg, Hexapod_Joint_ID joint, uint16_t pulse_us);

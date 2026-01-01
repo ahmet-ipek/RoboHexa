@@ -12,9 +12,9 @@ void Kalman_Init(Kalman_t *kf) {
     kf->P[1][1] = 0.0f;
 
     // Tuning Parameters
-    kf->Q_angle = 0.001f;  // Accelerometer trust (Lower = Trust accel more)
+    kf->Q_angle = 0.005f;  // Accelerometer trust (Lower = Trust accel more)
     kf->Q_bias  = 0.003f;  // Gyro Drift trust
-    kf->R_measure = 0.03f; // Measurement Noise
+    kf->R_measure = 0.12f; // Measurement Noise
 }
 
 float Kalman_Update(Kalman_t *kf, float newAngle, float newRate, float dt) {

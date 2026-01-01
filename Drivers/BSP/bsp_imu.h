@@ -42,5 +42,6 @@ uint8_t BSP_IMU_Init(void);
 void BSP_IMU_Start_Read_DMA(void);
 MPU6050_Data_t BSP_IMU_Get_Data(void);
 IMU_State_t BSP_IMU_Get_State(void);
+void I2C1_BusRecovery(void);
 
 #endif /* BSP_IMU_H */

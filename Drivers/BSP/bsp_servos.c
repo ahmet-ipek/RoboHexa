@@ -23,6 +23,7 @@ static const Servo_Hardware_Map_t SERVO_MAP[HEXAPOD_LEG_COUNT][JOINTS_PER_LEG] =
     { {&htim1, TIM_CHANNEL_2}, {&htim8, TIM_CHANNEL_1},  {&htim3, TIM_CHANNEL_2}  }
 };
 
+
 void BSP_Servo_Init(void) {
     // Start PWM for all defined channels
     for(int i = 0; i < HEXAPOD_LEG_COUNT; i++) {
@@ -31,11 +32,12 @@ void BSP_Servo_Init(void) {
             uint32_t channel = SERVO_MAP[i][j].channel;
 
             // Initialize to Neutral (1500us)
-            __HAL_TIM_SET_COMPARE(timer, channel, 1500);
+//            __HAL_TIM_SET_COMPARE(timer, channel, 1500);
             HAL_TIM_PWM_Start(timer, channel);
         }
     }
 }
+
 
 void BSP_Servo_Write(Hexapod_Leg_ID leg, Hexapod_Joint_ID joint, uint16_t pulse_us) {
     if(leg >= HEXAPOD_LEG_COUNT || joint >= JOINTS_PER_LEG) return;

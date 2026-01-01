@@ -17,6 +17,7 @@ static void MPU_Write(uint8_t reg, uint8_t value) {
  */
 uint8_t BSP_IMU_Init(void) {
     uint8_t check = 0;
+    HAL_Delay(100);   // 50–100 ms recommended
 
     // 1. Check WHO_AM_I (Blocking Read)
     HAL_I2C_Mem_Read(&hi2c1, MPU6050_ADDR, REG_WHO_AM_I, 1, &check, 1, 100);
@@ -76,4 +77,31 @@ MPU6050_Data_t BSP_IMU_Get_Data(void) {
 
 IMU_State_t BSP_IMU_Get_State(void) {
     return imu_state;
+}
+
+
+void I2C1_BusRecovery(void)
+{
+    GPIO_InitTypeDef GPIO_InitStruct = {0};
+
+    __HAL_RCC_GPIOB_CLK_ENABLE();
+
+    GPIO_InitStruct.Pin = GPIO_PIN_6 | GPIO_PIN_7;
+    GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_OD;
+    GPIO_InitStruct.Pull = GPIO_PULLUP;
+    GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+    HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
+
+    // Clock out 9 pulses
+    for (int i = 0; i < 9; i++)
+    {
+        HAL_GPIO_WritePin(GPIOB, GPIO_PIN_6, GPIO_PIN_SET);
+        HAL_Delay(1);
+        HAL_GPIO_WritePin(GPIOB, GPIO_PIN_6, GPIO_PIN_RESET);
+        HAL_Delay(1);
+    }
+
+    // Release bus
+    HAL_GPIO_WritePin(GPIOB, GPIO_PIN_6, GPIO_PIN_SET);
+    HAL_GPIO_WritePin(GPIOB, GPIO_PIN_7, GPIO_PIN_SET);
 }
