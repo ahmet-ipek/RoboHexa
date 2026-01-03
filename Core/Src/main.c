@@ -104,6 +104,9 @@ volatile uint8_t joy_gait    = 0;
 // 2. The Gait Engine Instance
 Gait_State_t robot_gait;
 
+// 3. Body Control Inputs (For IMU or Manual)
+BodyPose_t current_pose = {0};
+
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -114,16 +117,14 @@ void SystemClock_Config(void);
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
-// --- THE DETERMINISTIC PHYSICS LOOP (50Hz) ---
-// This fires automatically every 20ms.
+
+// --- 50HZ Loop fires automatically every 20ms ---
 void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 {
-    // Check if it's TIM6 (in case you use others)
+
     if (htim->Instance == TIM6)
     {
-        // Run the Gait Engine
-        // Note: dt is hardcoded to 0.02f because the timer guarantees this exact interval.
-        Gait_Update(&robot_gait, joy_stride_x_mm, joy_stride_y_mm, joy_turn_deg, joy_gait, 0.02f);
+        Gait_Update(&robot_gait, &current_pose, joy_stride_x_mm, joy_stride_y_mm, joy_turn_deg, joy_gait, 0.02f);
     }
 }
 /* USER CODE END 0 */
@@ -185,6 +186,9 @@ int main(void)
     // 3. Gait Init
     Gait_Init(&robot_gait);
 
+    // Set default height
+    current_pose.z = -100.0f;
+
     // 4. Start the Physics Timer
     HAL_TIM_Base_Start_IT(&htim6);
 
@@ -205,8 +209,7 @@ int main(void)
   Kalman_Init(&KalmanRoll);
   last_tick = HAL_GetTick();
 
-  // Set default height
-//    test_pose.z = -100.0f;
+
 
 
   /* USER CODE END 2 */

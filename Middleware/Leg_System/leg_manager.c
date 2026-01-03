@@ -51,8 +51,8 @@ const float SERVO_NEUTRAL[HEXAPOD_LEG_COUNT][JOINTS_PER_LEG] = {
     {  45.0f, -90.0f, 90.0f }  // LB
 };
 
-// Internal storage for leg geometry
-static HexapodLeg_t legs[6];
+// storage for leg geometry
+HexapodLeg_t legs[6];
 
 // --- IMPLEMENTATION ---
 
@@ -101,7 +101,7 @@ void Leg_System_Init(void) {
 }
 
 // Converts Angle -> Pulse using your Slope/Offset table
-static uint16_t Angle_To_Pulse(uint8_t leg, uint8_t joint, float angle_deg) {
+uint16_t Angle_To_Pulse(uint8_t leg, uint8_t joint, float angle_deg) {
     Servo_Config_t cfg = servo_config[leg][joint];
 
     // Apply Offset

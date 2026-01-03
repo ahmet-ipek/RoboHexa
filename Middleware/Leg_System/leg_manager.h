@@ -16,12 +16,17 @@ extern const float SERVO_NEUTRAL[HEXAPOD_LEG_COUNT][JOINTS_PER_LEG];
 extern float home_x_mm[6];
 extern float home_y_mm[6];
 
+// Expose Leg Geometry for IK Solver
+extern HexapodLeg_t legs[6];
+
 /**
  * @brief  Initializes the Leg System.
  * Sets up physical dimensions and mounting offsets for the IK engine.
  * Must be called once before moving legs.
  */
 void Leg_System_Init(void);
+
+uint16_t Angle_To_Pulse(uint8_t leg, uint8_t joint, float angle_deg);
 
 /**
  * @brief  Moves a specific leg's foot tip to a target 3D coordinate.

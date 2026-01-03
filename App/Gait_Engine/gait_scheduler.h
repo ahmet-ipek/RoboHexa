@@ -22,7 +22,7 @@ typedef enum {
 // --- STATE CONTAINER ---
 // Holds all "memory" for the gait engine
 typedef struct {
-    // 1. Dynamic Variables (Changed by Logic)
+    // 1. Dynamic Variables
     float phase;          // 0.0 to 1.0 (The Master Clock)
     float smoothed_x;     // mm/s (Ramped velocity)
     float smoothed_y;     // mm/s
@@ -38,16 +38,11 @@ typedef struct {
 void Gait_Init(Gait_State_t *state);
 
 /**
- * @brief  Calculates leg targets for the current moment in time.
- * @param  state      Pointer to the Gait State struct
- * @param  cmd_x      Target Strafe Speed (mm/s)
- * @param  cmd_y      Target Forward Speed (mm/s)
- * @param  cmd_turn   Target Turn Speed (deg/s)
- * @param  gait_type  Tripod, Wave, or Ripple
- * @param  dt         Delta Time since last call (seconds)
+ * @brief  Calculates leg targets combining Gait + Body Kinematics.
+ * @param  state       Pointer to the Gait State struct
+ * @param  cmd_pose    Desired Body Pose (Roll, Pitch, Yaw, Z-Height, etc.)
+ * @param  cmd_stride  Desired Walking Stride (X/Y) and Turn (deg)
+ * @param  dt          Delta Time (seconds)
  */
-void Gait_Update(Gait_State_t *state,
-                 float cmd_x, float cmd_y, float cmd_turn,
-                 GaitType_e gait_type, float dt);
-
+void Gait_Update(Gait_State_t *state, BodyPose_t *cmd_pose, float cmd_stride_x, float cmd_stride_y, float cmd_turn_deg, GaitType_e gait_type, float dt);
 #endif /* GAIT_SCHEDULER_H */
