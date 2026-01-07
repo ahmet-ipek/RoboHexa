@@ -4,6 +4,7 @@
 #include "stm32f4xx_hal.h"
 
 void Robot_Init(void);
+void Robot_Sit(void);
 
 
 

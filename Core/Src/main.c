@@ -29,6 +29,7 @@
 /* USER CODE BEGIN Includes */
 #include "bsp_servos.h"
 #include "bsp_imu.h"
+#include "bsp_ibus.h"
 #include "bsp_nrf24.h"
 #include "kalman_filter.h"
 #include "leg_manager.h"
@@ -107,6 +108,33 @@ Gait_State_t robot_gait;
 // 3. Body Control Inputs (For IMU or Manual)
 BodyPose_t current_pose = {0};
 
+typedef struct{
+	uint8_t ms1;
+	uint8_t ms2;
+	uint8_t ms3;
+	uint8_t ms4;
+	uint8_t ms5;
+	uint8_t ms6;
+}msRead_t;
+
+volatile msRead_t msread;
+
+uint16_t ch1;
+uint16_t ch2;
+uint16_t ch3;
+uint16_t ch4;
+uint16_t ch5;
+uint16_t ch6;
+
+RC_Mode_e rc_mode = RC_MODE_WALK; // Default
+uint32_t toggle_timer = 0;        // For debouncing the gesture
+uint8_t gesture_active = 0;       // Flag
+
+uint8_t currentmode = 0;
+// Timing (For Debouncing without blocking)
+uint32_t last_button_press = 0;
+uint32_t last_gait_switch = 0;
+
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -126,6 +154,17 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
     {
         Gait_Update(&robot_gait, &current_pose, joy_stride_x_mm, joy_stride_y_mm, joy_turn_deg, joy_gait, 0.02f);
     }
+}
+
+// Helper: Map function
+float Map_Float(float x, float in_min, float in_max, float out_min, float out_max) {
+    return (x - in_min) * (out_max - out_min) / (in_max - in_min) + out_min;
+}
+
+// Deadzone helper (Stick drift removal)
+float Apply_Deadzone(float val, float limit) {
+    if (fabsf(val) < limit) return 0.0f;
+    return val;
 }
 /* USER CODE END 0 */
 
@@ -170,44 +209,41 @@ int main(void)
   MX_I2C1_Init();
   MX_SPI2_Init();
   MX_TIM6_Init();
+  MX_UART4_Init();
   /* USER CODE BEGIN 2 */
 
-  // 1. Hardware Init: Start PWM Timers
-    BSP_Servo_Init();
+	// 1. Hardware Init: Start PWM Timers
+	BSP_Servo_Init();
 
-  // 2. Init Middleware (Math & Physics)
-    Leg_System_Init();
+	// 2. Init Middleware (Math & Physics)
+	Leg_System_Init();
 
-    Servo_State_Init();
-    HAL_Delay(1000);
+	Servo_State_Init();
+	HAL_Delay(1000);
 
-    Robot_Init();
+	Robot_Init();
 
-    // 3. Gait Init
-    Gait_Init(&robot_gait);
+	// 3. Gait Init
+	Gait_Init(&robot_gait);
 
-    // Set default height
-    current_pose.z = -100.0f;
+	// 4. Start the Physics Timer
+	HAL_TIM_Base_Start_IT(&htim6);
 
-    // 4. Start the Physics Timer
-    HAL_TIM_Base_Start_IT(&htim6);
+	// 5. Init IMU
+	if (BSP_IMU_Init() == 1) {
+		work = 99;
+	} else {
+		Robot_Sit();
+		Error_Handler();
+	}
 
-  // 5. Init IMU
-  if (BSP_IMU_Init() == 1) {
-	  work=99;
-  } else {
+	// 6. Init Kalman
+	Kalman_Init(&KalmanPitch);
+	Kalman_Init(&KalmanRoll);
+	last_tick = HAL_GetTick();
 
-      Error_Handler();
-  }
-
-//  // 3. Init nrf24l01
-//  BSP_NRF_Init();
-//  BSP_NRF_StartListening();
-
-  // 6. Init Kalman
-  Kalman_Init(&KalmanPitch);
-  Kalman_Init(&KalmanRoll);
-  last_tick = HAL_GetTick();
+	// 7. Init RC
+	BSP_IBUS_Init(&huart4);
 
 
 
@@ -246,9 +282,99 @@ int main(void)
 	  Robot_Pitch = Kalman_Update(&KalmanPitch, accel_pitch, gyro_pitch_rate, dt);
 
 
-	  // 4. Update the Gait Engine
-	  robot_gait.ground_speed = debug_speed;
-	  robot_gait.accel_rate = debug_accel;
+
+	    msread.ms1 = HAL_GPIO_ReadPin(GPIOC, GPIO_PIN_4);
+		msread.ms2 = HAL_GPIO_ReadPin(GPIOC, GPIO_PIN_5);
+		msread.ms3 = HAL_GPIO_ReadPin(GPIOC, GPIO_PIN_11);
+		msread.ms4 = HAL_GPIO_ReadPin(GPIOB, GPIO_PIN_0);
+		msread.ms5 = HAL_GPIO_ReadPin(GPIOC, GPIO_PIN_12);
+		msread.ms6 = HAL_GPIO_ReadPin(GPIOC, GPIO_PIN_10);
+
+		// --- 1. MODE SWITCHING (Blue Button PC13) ---
+		// Logic: Active LOW (Reset).
+		// We use a timestamp to "debounce" without stopping the code.
+		if (HAL_GPIO_ReadPin(GPIOC, GPIO_PIN_13) == GPIO_PIN_RESET) {
+			uint32_t now = HAL_GetTick();
+			if ((now - last_button_press) > 300) // 300ms cooldown
+					{
+				currentmode++;
+				if (currentmode > 1)
+					currentmode = 0;
+
+				last_button_press = now;
+			}
+		}
+
+		// --- 2. READ RC INPUTS ---
+		BSP_IBUS_Process(); // Parse any new data
+		if (BSP_IBUS_IsConnected()) {
+			ch1 = BSP_IBUS_ReadChannel(0);
+			ch2 = BSP_IBUS_ReadChannel(1);
+			ch3 = BSP_IBUS_ReadChannel(2);
+			ch4 = BSP_IBUS_ReadChannel(3);
+			ch5 = BSP_IBUS_ReadChannel(4);
+			ch6 = BSP_IBUS_ReadChannel(5);
+
+			// --- 3. GAIT SWITCHING GESTURE ---
+			// Gesture: VRB Low (<=1100) AND Right Stick Up (>=1800)
+			if (ch6 <= 1100 && ch2 >= 1800) {
+				uint32_t now = HAL_GetTick();
+				if ((now - last_gait_switch) > 500) // 500ms cooldown
+						{
+					joy_gait++;
+					if (joy_gait > 2)
+						joy_gait = 0;
+
+					last_gait_switch = now;
+				}
+			}
+
+			// --- 4. EXECUTE MODES ---
+			if (currentmode == 0) // RC_MODE_WALK
+					{
+				// Reset Pose Angles (Keep body flat while walking)
+				current_pose.roll = 0;
+				current_pose.pitch = 0;
+				current_pose.yaw = 0;
+
+				// Mapping
+				float walkX = Map_Float((float) ch1, 1000.0f, 2000.0f, -60.0f, 60.0f);
+				float walkY = Map_Float((float) ch2, 1119.0f, 2000.0f, -60.0f, 60.0f);
+				float transY = Map_Float((float) ch5, 1000.0f, 2000.0f, -40.0f, 40.0f);
+				float turn_deg = Map_Float((float) ch4, 1000.0f, 2000.0f, -15.0f, 15.0f);
+
+				// Apply Deadzones & Update Globals
+				joy_stride_x_mm = Apply_Deadzone(walkX, 10.0f);
+				joy_stride_y_mm = Apply_Deadzone(walkY, 10.0f);
+				joy_turn_deg = Apply_Deadzone(turn_deg, 2.5f);
+
+				// Pose Mappings (Height & Body Shift)
+				current_pose.z = Map_Float((float) ch3, 1118.0f, 2000.0f, 0.0f, -150.0f);
+				current_pose.y = Apply_Deadzone(transY, 5.0f);
+
+				// Speed Mapping
+				robot_gait.ground_speed = Map_Float((float) ch6, 1000.0f, 2000.0f, 0.0f, 1.0f);
+			} else // RC_MODE_POSE
+			{
+				// Stop Walking
+				joy_stride_x_mm = 0.0f;
+				joy_stride_y_mm = 0.0f;
+				joy_turn_deg = 0.0f;
+
+				// Translation Mappings
+				float poseX = Map_Float((float) ch4, 1000.0f, 2000.0f, -40.0f, 40.0f);
+				float poseY = Map_Float((float) ch3, 1118.0f, 2000.0f, -40.0f, 40.0f);
+
+				current_pose.x = Apply_Deadzone(poseX, 2.0f);
+				current_pose.y = Apply_Deadzone(poseY, 2.0f);
+				current_pose.z = Map_Float((float) ch6, 1000.0f, 2000.0f, 0.0f, -150.0f);
+
+				// Rotation Mappings (With manual trim offsets)
+				current_pose.roll = Map_Float((float) ch1, 1000.0f, 2000.0f, -30.0f, 30.0f) - 0.4f;
+				current_pose.pitch = Map_Float((float) ch2, 1119.0f, 2000.0f, -30.0f, 30.0f) - 4.0f;
+				current_pose.yaw = Map_Float((float) ch5, 1000.0f, 2000.0f, -30.0f, 30.0f);
+			}
+		}
 
 
 //	  Leg_Set_Angle_Smoothly(Leg, joint, Servo_Get_Current(Leg, joint), angle, debug_speed, dt) ;
@@ -342,6 +468,7 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
         }
     }
 }
+
 /* USER CODE END 4 */
 
 /**

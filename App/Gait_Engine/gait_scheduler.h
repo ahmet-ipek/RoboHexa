@@ -28,11 +28,21 @@ typedef struct {
     float smoothed_y;     // mm/s
     float smoothed_turn;  // mm/s (Arc length)
 
+    // NEW: Body Pose Smoothers
+    // We store the "Physical" pose here, which lags behind the "Command" pose
+    BodyPose_t smoothed_pose;
+
     // 2. Configuration
     float accel_rate;     // mm/s^2 (Slew Rate)
+    float angle_rate;     // Angular Acceleration (deg/s^2)
     float ground_speed;   // Phase multiplier (Frequency)
 
 } Gait_State_t;
+
+typedef enum {
+    RC_MODE_WALK = 0,
+    RC_MODE_POSE = 1
+} RC_Mode_e;
 
 // --- API ---
 void Gait_Init(Gait_State_t *state);
