@@ -36,6 +36,8 @@
 #include "leg_ik.h"
 #include "init_emotes.h"
 #include "gait_scheduler.h"
+#include "sensor_fusion.h"
+#include "control_pid.h"
 #include <math.h>
 /* USER CODE END Includes */
 
@@ -57,7 +59,7 @@
 /* Private variables ---------------------------------------------------------*/
 
 /* USER CODE BEGIN PV */
-uint8_t Leg=0, joint=0;
+uint8_t leg=0, joint=0;
 uint16_t pulse_us=1500;
 float x=0.0, y=0.0, z=-100.0; // x, y and z coordinates of the body centered frame in (mm).
 float angle = 0.0; // angle of rotation in degrees.
@@ -107,6 +109,7 @@ Gait_State_t robot_gait;
 
 // 3. Body Control Inputs (For IMU or Manual)
 BodyPose_t current_pose = {0};
+BodyPose_t current_pose_debug = {0};
 
 typedef struct{
 	uint8_t ms1;
@@ -117,8 +120,6 @@ typedef struct{
 	uint8_t ms6;
 }msRead_t;
 
-volatile msRead_t msread;
-
 uint16_t ch1;
 uint16_t ch2;
 uint16_t ch3;
@@ -126,14 +127,37 @@ uint16_t ch4;
 uint16_t ch5;
 uint16_t ch6;
 
-RC_Mode_e rc_mode = RC_MODE_WALK; // Default
-uint32_t toggle_timer = 0;        // For debouncing the gesture
-uint8_t gesture_active = 0;       // Flag
-
 uint8_t currentmode = 0;
 // Timing (For Debouncing without blocking)
 uint32_t last_button_press = 0;
 uint32_t last_gait_switch = 0;
+
+// Global Tuning for Balance Strength
+float Kproll = 0.35f; // old 0.8 new
+float Kppitch = 0.45f; // old KP 1.0 new 0.5
+float Kiroll = 1.5f; // old 8 new 2
+float Kdroll = 0.015f; // 0.02
+float Kipitch = 2.1f; // old KI 10.0 new 2.5
+float Kdpitch = 0.03f; // KD 0.05
+
+Fusion_State_t ori = {0};
+MPU6050_Data_t raw = {0};
+
+
+// PID Instances for Pitch and Roll
+PID_Controller_t pid_pitch;
+PID_Controller_t pid_roll;
+
+// Shared Variables (Bridge between Fast Loop and Slow Loop)
+float balance_pitch_output = 0.0f;
+float balance_roll_output = 0.0f;
+
+// --- SCHEDULER FLAGS ---
+volatile uint8_t flag_50hz_gait = 0;
+volatile uint8_t flag_200hz_gait = 0;
+
+float pitchRef = 0.0f;
+float rollRef = 0.0f;
 
 /* USER CODE END PV */
 
@@ -146,13 +170,23 @@ void SystemClock_Config(void);
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
 
-// --- 50HZ Loop fires automatically every 20ms ---
+/* TIM6 PeriodElapsedCallback (Configured for 200Hz) */
 void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 {
-
     if (htim->Instance == TIM6)
     {
-        Gait_Update(&robot_gait, &current_pose, joy_stride_x_mm, joy_stride_y_mm, joy_turn_deg, joy_gait, 0.02f);
+        flag_200hz_gait = 1;
+
+
+        static uint8_t cnt = 0;  // persists across interrupts
+        cnt++;
+
+        if (cnt >= 4)            // 200Hz / 4 = 50Hz
+        {
+            cnt = 0;
+            flag_50hz_gait = 1;
+//            HAL_GPIO_TogglePin(GPIOA, GPIO_PIN_5);
+        }
     }
 }
 
@@ -237,12 +271,7 @@ int main(void)
 		Error_Handler();
 	}
 
-	// 6. Init Kalman
-	Kalman_Init(&KalmanPitch);
-	Kalman_Init(&KalmanRoll);
-	last_tick = HAL_GetTick();
-
-	// 7. Init RC
+	// 6. Init RC
 	BSP_IBUS_Init(&huart4);
 
 
@@ -255,40 +284,20 @@ int main(void)
   while (1)
   {
 
-	  // 1. Get raw data from BSP
-	  BSP_IMU_Start_Read_DMA();
+	  // === TASK 1: FAST LOOP (200Hz) ===
+	  if (flag_200hz_gait) {
+		  flag_200hz_gait = 0;
 
-	  MPU6050_Data_t raw = BSP_IMU_Get_Data();
-
-	  // 2. Calculate dt (Delta Time in Seconds)
-	  uint32_t current_tick = HAL_GetTick();
-	  float dt = (current_tick - last_tick) / 1000.0f;
-	  if(dt < 0.001f) dt = 0.001f; // Safety
-	  last_tick = current_tick;
-
-	  // 3. Calculate Raw Accelerometer Angles
-	  float accel_roll = atan2f((float)raw.Accel_Y_RAW, (float)raw.Accel_Z_RAW) * 57.296f;
-	  float accel_pitch = atan2f(-(float)raw.Accel_X_RAW,
-	                                 sqrtf((float)raw.Accel_Y_RAW*(float)raw.Accel_Y_RAW +
-	                                       (float)raw.Accel_Z_RAW*(float)raw.Accel_Z_RAW)
-	                                 	 	 	 	 	 	 	 	 	 	 	 	 	 ) * 57.296f;
-
-	  // 4. Convert Gyro to Deg/Sec
-	  float gyro_roll_rate  = (float)raw.Gyro_X_RAW / 131.0f;
-	  float gyro_pitch_rate = (float)raw.Gyro_Y_RAW / 131.0f;
-
-	  // 5. Run Kalman Filter
-	  Robot_Roll  = Kalman_Update(&KalmanRoll,  accel_roll,  gyro_roll_rate,  dt);
-	  Robot_Pitch = Kalman_Update(&KalmanPitch, accel_pitch, gyro_pitch_rate, dt);
+	  }
 
 
+		if (flag_50hz_gait) {
+			flag_50hz_gait = 0; // Clear flag
 
-	    msread.ms1 = HAL_GPIO_ReadPin(GPIOC, GPIO_PIN_4);
-		msread.ms2 = HAL_GPIO_ReadPin(GPIOC, GPIO_PIN_5);
-		msread.ms3 = HAL_GPIO_ReadPin(GPIOC, GPIO_PIN_11);
-		msread.ms4 = HAL_GPIO_ReadPin(GPIOB, GPIO_PIN_0);
-		msread.ms5 = HAL_GPIO_ReadPin(GPIOC, GPIO_PIN_12);
-		msread.ms6 = HAL_GPIO_ReadPin(GPIOC, GPIO_PIN_10);
+
+			Gait_Update(&robot_gait, &current_pose, joy_stride_x_mm, joy_stride_y_mm, joy_turn_deg, joy_gait, currentmode, 0.02f);
+//			HAL_GPIO_TogglePin(GPIOA, GPIO_PIN_5);
+		}
 
 		// --- 1. MODE SWITCHING (Blue Button PC13) ---
 		// Logic: Active LOW (Reset).
@@ -298,7 +307,7 @@ int main(void)
 			if ((now - last_button_press) > 300) // 300ms cooldown
 					{
 				currentmode++;
-				if (currentmode > 1)
+				if (currentmode > 3)
 					currentmode = 0;
 
 				last_button_press = now;
@@ -317,7 +326,7 @@ int main(void)
 
 			// --- 3. GAIT SWITCHING GESTURE ---
 			// Gesture: VRB Low (<=1100) AND Right Stick Up (>=1800)
-			if (ch6 <= 1100 && ch2 >= 1800) {
+			if (ch6 <= 1020 && ch2 >= 1800) {
 				uint32_t now = HAL_GetTick();
 				if ((now - last_gait_switch) > 500) // 500ms cooldown
 						{
@@ -330,7 +339,7 @@ int main(void)
 			}
 
 			// --- 4. EXECUTE MODES ---
-			if (currentmode == 0) // RC_MODE_WALK
+			if (currentmode == 0 || currentmode == 1)
 					{
 				// Reset Pose Angles (Keep body flat while walking)
 				current_pose.roll = 0;
@@ -376,10 +385,15 @@ int main(void)
 			}
 		}
 
+//		ori = Fusion_Get_Angles();
+
 
 //	  Leg_Set_Angle_Smoothly(Leg, joint, Servo_Get_Current(Leg, joint), angle, debug_speed, dt) ;
 //	  Leg_Move_To_XYZ_Smoothly(Leg, x, y, z, debug_speed, dt);
 //	  Leg_Update_Pose(test_pose);
+//		            __HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_3, pulse_us);
+//		            Leg_Set_Angle(leg, joint, angle) ;
+
 
 //	  HAL_Delay(20);
     /* USER CODE END WHILE */

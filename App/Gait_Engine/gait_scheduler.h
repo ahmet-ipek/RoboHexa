@@ -6,11 +6,14 @@
 #include <math.h>
 #include "leg_ik.h"     // Access to Hexapod_SolveIK
 #include "leg_manager.h" // Access to home_x_mm, home_y_mm
+#include "bsp_limits.h"
 
 // --- TUNING CONSTANTS ---
 #define BODY_HEIGHT_MM    100.0f  // Standard Walking Height
-#define STEP_HEIGHT_MM    30.0f   // How high the foot lifts
+#define STEP_HEIGHT_MM    40.0f   // How high the foot lifts
 #define STANCE_RADIUS     120.0f  // Radius for turn calculations
+
+
 
 // --- GAIT TYPES ---
 typedef enum {
@@ -28,9 +31,15 @@ typedef struct {
     float smoothed_y;     // mm/s
     float smoothed_turn;  // mm/s (Arc length)
 
-    // NEW: Body Pose Smoothers
+    // Body Pose Smoothers
     // We store the "Physical" pose here, which lags behind the "Command" pose
     BodyPose_t smoothed_pose;
+
+    // --- TERRAIN ADAPTATION ---
+    float ground_offset[6];   // The height correction (mm) for each leg
+    uint8_t is_grounded[6];   // Flag: Has this leg touched down yet?
+    float liftoff_offset[6]; //  Memory for smooth liftoff
+
 
     // 2. Configuration
     float accel_rate;     // mm/s^2 (Slew Rate)
@@ -40,9 +49,9 @@ typedef struct {
 } Gait_State_t;
 
 typedef enum {
-    RC_MODE_WALK = 0,
-    RC_MODE_POSE = 1
-} RC_Mode_e;
+    noFeedBack_Walk = 0,
+	FeedBack_Walk = 1
+} Walking_Mode_e;
 
 // --- API ---
 void Gait_Init(Gait_State_t *state);
@@ -52,7 +61,11 @@ void Gait_Init(Gait_State_t *state);
  * @param  state       Pointer to the Gait State struct
  * @param  cmd_pose    Desired Body Pose (Roll, Pitch, Yaw, Z-Height, etc.)
  * @param  cmd_stride  Desired Walking Stride (X/Y) and Turn (deg)
+ * @param  cmd_turn_deg  Desired rotation in deg
+ * @param  gait_type  Walking gait selector
+ * @param  walking_mode  Walking mode selector
  * @param  dt          Delta Time (seconds)
  */
-void Gait_Update(Gait_State_t *state, BodyPose_t *cmd_pose, float cmd_stride_x, float cmd_stride_y, float cmd_turn_deg, GaitType_e gait_type, float dt);
+void Gait_Update(Gait_State_t *state, BodyPose_t *cmd_pose, float cmd_stride_x, float cmd_stride_y, float cmd_turn_deg, GaitType_e gait_type, Walking_Mode_e walking_mode, float dt);
+
 #endif /* GAIT_SCHEDULER_H */

@@ -28,13 +28,13 @@ static const Servo_Config_t servo_config[6][3] = {
     // Leg 0 (RF)
     { {11.39f, -8.0f}, {-10.67f, -20.0f}, {11.61f, 80.0f} }, // Calibration done leg is ready for inverse kinematics
     // Leg 1 (LF)
-    { {10.83f, 22.0f}, {11.22f, -35.0f}, {-10.83f, 74.0f} }, // Calibration done leg is ready for inverse kinematics
+    { {10.83f, 22.0f}, {11.22f, -35.0f}, {-10.1f, 90.0f} }, // Calibration done leg is ready for inverse kinematics
     // Leg 2 (RM)
     { {11.11f, -6.0f}, {-10.55f, -4.0f}, {11.11f, 75.0f} }, // Calibration done leg is ready for inverse kinematics
     // Leg 3 (LM)
     { {10.55f, -3.0f}, {11.11f, -10.0f}, {-11.11f, 95.0f} }, // Calibration done leg is ready for inverse kinematics
     // Leg 4 (RB)
-    { {11.39f, 0.0f}, {-10.78f, -24.0f}, {10.00f, 92.0f} }, // Calibration done leg is ready for inverse kinematics
+    { {11.39f, 0.0f}, {-10.78f, -24.0f}, {11.11f, 92.0f} }, // Calibration done leg is ready for inverse kinematics
     // Leg 5 (LB)
     { {11.11f, -5.0f}, {11.67f, 0.0f}, {-10.83f, 60.0f} } // Calibration done leg is ready for inverse kinematics
 };
@@ -58,32 +58,32 @@ HexapodLeg_t legs[6];
 
 void Leg_System_Init(void) {
     // --- LEG 0: Right Front ---
-    // Position: Forward (+65) and Right (+55)
+    // Position: Forward (+85) and Right (+82.5)
     // Angle: 45 deg (Points diagonal Front-Right)
     Hexapod_InitLeg(&legs[0], D_COXA, D_FEMUR, D_TIBIA, 82.5f, 85.0f, 45.0f);
 
     // --- LEG 1: Left Front ---
-    // Position: Forward (+65) and Left (-55)
+    // Position: Forward (+85) and Left (-82.5)
     // Angle: 135 deg (Points diagonal Front-Left)
     Hexapod_InitLeg(&legs[1], D_COXA, D_FEMUR, D_TIBIA, -82.5f, 85.0f, 135.0f);
 
     // --- LEG 2: Right Middle ---
-    // Position: Centered (0) and Right (+55)
+    // Position: Centered (0) and Right (+82.5)
     // Angle: 0 deg (Points straight Right)
     Hexapod_InitLeg(&legs[2], D_COXA, D_FEMUR, D_TIBIA, 82.5f, 0.0f, 0.0f);
 
     // --- LEG 3: Left Middle ---
-    // Position: Centered (0) and Left (-55)
+    // Position: Centered (0) and Left (-82.5)
     // Angle: 180 deg (Points straight Left)
     Hexapod_InitLeg(&legs[3], D_COXA, D_FEMUR, D_TIBIA, -82.5f, 0.0f, 180.0f);
 
     // --- LEG 4: Right Back ---
-    // Position: Back (-65) and Right (+55)
+    // Position: Back (-85) and Right (+82.5)
     // Angle: -45 deg (Points diagonal Back-Right)
     Hexapod_InitLeg(&legs[4], D_COXA, D_FEMUR, D_TIBIA, 82.5f, -85.0f, -45.0f);
 
     // --- LEG 5: Left Back ---
-    // Position: Back (-65) and Left (-55)
+    // Position: Back (-85) and Left (-82.5)
     // Angle: -135 deg (Points diagonal Back-Left)
     Hexapod_InitLeg(&legs[5], D_COXA, D_FEMUR, D_TIBIA, -82.5f, -85.0f, -135.0f);
 

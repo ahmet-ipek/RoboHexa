@@ -23,7 +23,6 @@ static const Servo_Hardware_Map_t SERVO_MAP[HEXAPOD_LEG_COUNT][JOINTS_PER_LEG] =
     { {&htim1, TIM_CHANNEL_2}, {&htim8, TIM_CHANNEL_1},  {&htim3, TIM_CHANNEL_2}  }
 };
 
-
 void BSP_Servo_Init(void) {
     // Start PWM for all defined channels
     for(int i = 0; i < HEXAPOD_LEG_COUNT; i++) {
