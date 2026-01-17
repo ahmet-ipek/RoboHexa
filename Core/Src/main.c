@@ -59,66 +59,25 @@
 /* Private variables ---------------------------------------------------------*/
 
 /* USER CODE BEGIN PV */
+
+// debug variables
 uint8_t leg=0, joint=0;
 uint16_t pulse_us=1500;
 float x=0.0, y=0.0, z=-100.0; // x, y and z coordinates of the body centered frame in (mm).
 float angle = 0.0; // angle of rotation in degrees.
 uint8_t work=0;
 
-
-MPU6050_Data_t sensor_data;
-
-
-
-Kalman_t KalmanPitch;
-Kalman_t KalmanRoll;
-int16_t Robot_Pitch = 0.0f;
-int16_t Robot_Roll = 0.0f;
-uint32_t last_tick = 0; // For dt calculation
-
-
-// --- DEBUG COCKPIT (Add these to Live Watch) ---
-
-// 1. Master Switch (0 = Automatic Demo, 1 = Manual Debug Control)
-uint8_t debug_mode = 1;
-
-// 2. Body Posture Controls (Smooth Body_Motion Engine)
-float debug_body_x = 0.0f;
-float debug_body_y = 0.0f;
-float debug_body_z = -100.0f; // Default Height
-
-// 3. Walking Controls (Gait Engine)
-// Set 'debug_walk_on' to 1 to start moving
-uint8_t debug_walk_on = 0;
-float debug_stride_x  = 0.0f; // Strafing (mm)
-float debug_stride_y  = 0.0f; // Walking Forward (mm)
-float debug_turn_deg  = 0.0f; // Turning (deg)
-float debug_speed     = 0.5f; // Smoothness
-float debug_accel     = 150.0f; // Smoothness
-
-BodyPose_t test_pose = {0};
-
 // 1. Control Inputs (Volatile is mandatory for variables shared with Interrupts)
-volatile float joy_stride_x_mm = 0.0f;
-volatile float joy_stride_y_mm = 0.0f; // Start with 0 (Stand still)
-volatile float joy_turn_deg    = 0.0f;
-volatile uint8_t joy_gait    = 0;
+float joy_stride_x_mm = 0.0f;
+float joy_stride_y_mm = 0.0f; // Start with 0 (Stand still)
+float joy_turn_deg    = 0.0f;
+uint8_t joy_gait    = 0;
 
 // 2. The Gait Engine Instance
 Gait_State_t robot_gait;
 
 // 3. Body Control Inputs (For IMU or Manual)
 BodyPose_t current_pose = {0};
-BodyPose_t current_pose_debug = {0};
-
-typedef struct{
-	uint8_t ms1;
-	uint8_t ms2;
-	uint8_t ms3;
-	uint8_t ms4;
-	uint8_t ms5;
-	uint8_t ms6;
-}msRead_t;
 
 uint16_t ch1;
 uint16_t ch2;
@@ -133,15 +92,17 @@ uint32_t last_button_press = 0;
 uint32_t last_gait_switch = 0;
 
 // Global Tuning for Balance Strength
-float Kproll = 0.35f; // old 0.8 new
-float Kppitch = 0.45f; // old KP 1.0 new 0.5
-float Kiroll = 1.5f; // old 8 new 2
-float Kdroll = 0.015f; // 0.02
-float Kipitch = 2.1f; // old KI 10.0 new 2.5
-float Kdpitch = 0.03f; // KD 0.05
+float Kppitch = 0.3f;
+float Kipitch = 4.5f;
+float Kdpitch = 0.02f;
+
+float Kproll = 0.25f;
+float Kiroll = 4.5f;
+float Kdroll = 0.015f;
+
+
 
 Fusion_State_t ori = {0};
-MPU6050_Data_t raw = {0};
 
 
 // PID Instances for Pitch and Roll
@@ -271,11 +232,15 @@ int main(void)
 		Error_Handler();
 	}
 
-	// 6. Init RC
+	// 6. Init the complementary filter
+	Fusion_Init();
+
+	// 7. Init PID
+	PID_Init(&pid_pitch, Kppitch, Kipitch, Kdpitch, 30.0f, 1.2f);
+	PID_Init(&pid_roll,  Kproll, Kiroll, Kdroll, 30.0f, 1.2f);
+
+	// 8. Init RC
 	BSP_IBUS_Init(&huart4);
-
-
-
 
   /* USER CODE END 2 */
 
@@ -288,16 +253,45 @@ int main(void)
 	  if (flag_200hz_gait) {
 		  flag_200hz_gait = 0;
 
+			// 1. Read IMU (Non-blocking check)
+			// If the driver is idle, ask for new data
+			if (BSP_IMU_Get_State() == IMU_IDLE) {
+				BSP_IMU_Start_Read_DMA();
+			}
+
+			// 2. Check if we actually have NEW data to process
+			MPU6050_Data_t raw = BSP_IMU_Get_Data();
+
+			// 3. Run Sensor Fusion
+			Fusion_Update(raw.Accel_X_RAW, raw.Accel_Y_RAW, raw.Accel_Z_RAW, raw.Gyro_X_RAW, raw.Gyro_Y_RAW, raw.Gyro_Z_RAW, 0.005f);
+
+			Fusion_State_t orient = Fusion_Get_Angles();
+
+			if (currentmode == 0) {
+			balance_pitch_output = PID_Compute(&pid_pitch, pitchRef, orient.pitch, 0.005f);
+			balance_roll_output = PID_Compute(&pid_roll, rollRef, orient.roll, 0.005f);
+			}
+
 	  }
 
 
 		if (flag_50hz_gait) {
 			flag_50hz_gait = 0; // Clear flag
 
+			// Apply Balance Correction
+			if (currentmode == 0) {
+				current_pose.pitch = balance_pitch_output;
+				current_pose.roll = balance_roll_output;
 
+				Leg_Update_Pose(current_pose);
+			}
+
+			if (currentmode == 3) {
 			Gait_Update(&robot_gait, &current_pose, joy_stride_x_mm, joy_stride_y_mm, joy_turn_deg, joy_gait, currentmode, 0.02f);
 //			HAL_GPIO_TogglePin(GPIOA, GPIO_PIN_5);
+			}
 		}
+
 
 		// --- 1. MODE SWITCHING (Blue Button PC13) ---
 		// Logic: Active LOW (Reset).
@@ -385,7 +379,7 @@ int main(void)
 			}
 		}
 
-//		ori = Fusion_Get_Angles();
+		ori = Fusion_Get_Angles();
 
 
 //	  Leg_Set_Angle_Smoothly(Leg, joint, Servo_Get_Current(Leg, joint), angle, debug_speed, dt) ;
