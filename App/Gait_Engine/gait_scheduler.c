@@ -43,7 +43,7 @@ void Gait_Init(Gait_State_t *state) {
 
 }
 
-void Gait_Update(Gait_State_t *state, BodyPose_t *cmd_pose, float cmd_x, float cmd_y, float cmd_turn_deg, GaitType_e gait_type, Walking_Mode_e walking_mode, float dt)
+void Gait_Update(Gait_State_t *state, BodyPose_t *cmd_pose, float cmd_x, float cmd_y, float cmd_turn_deg, GaitType_e gait_type, Walking_Mode_e walking_mode, float STEP_HEIGHT_MM, float dt)
 {
 
     // --- STATION 0: BODY POSE SMOOTHING ---
@@ -66,7 +66,7 @@ void Gait_Update(Gait_State_t *state, BodyPose_t *cmd_pose, float cmd_x, float c
     float cmd_turn_mm = (cmd_turn_deg * (3.14159f / 180.0f)) * STANCE_RADIUS;
     state->smoothed_x    = Approach_Float(state->smoothed_x, cmd_x, state->accel_rate, dt);
     state->smoothed_y    = Approach_Float(state->smoothed_y, cmd_y, state->accel_rate, dt);
-    state->smoothed_turn = Approach_Float(state->smoothed_turn, cmd_turn_mm, state->accel_rate * 0.5f, dt);
+    state->smoothed_turn = Approach_Float(state->smoothed_turn, cmd_turn_mm, state->accel_rate, dt);
 
     uint8_t is_moving = (fabsf(state->smoothed_x) > 1.0f ||
                          fabsf(state->smoothed_y) > 1.0f ||
@@ -142,8 +142,8 @@ void Gait_Update(Gait_State_t *state, BodyPose_t *cmd_pose, float cmd_x, float c
                 }
                 // 2. CALCULATE TRAJECTORY (BLENDED)
                 // A. The Standard Step (Sine Wave)
-                //	                        float sine_lift = sinf(progress * 3.14159f) * STEP_HEIGHT_MM;
-                float sine_lift = sinf(progress * 3.14159f) * (-state->smoothed_pose.z * 0.5);
+                float sine_lift = sinf(progress * 3.14159f) * STEP_HEIGHT_MM;
+//                float sine_lift = sinf(progress * 3.14159f) * (-state->smoothed_pose.z * 0.5);
 
                 // B. The Blend Out (Linear decay of the old offset)
                 // This ensures we start at +20mm and fade to 0mm by the end

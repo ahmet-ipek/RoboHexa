@@ -71,6 +71,7 @@ uint8_t work=0;
 float joy_stride_x_mm = 0.0f;
 float joy_stride_y_mm = 0.0f; // Start with 0 (Stand still)
 float joy_turn_deg    = 0.0f;
+float stepHeight = 20.0;
 uint8_t joy_gait    = 0;
 
 // 2. The Gait Engine Instance
@@ -92,13 +93,21 @@ uint32_t last_button_press = 0;
 uint32_t last_gait_switch = 0;
 
 // Global Tuning for Balance Strength
-float Kppitch = 0.3f;
-float Kipitch = 4.5f;
-float Kdpitch = 0.02f;
+float Kppitch_pose = 0.25f;
+float Kipitch_pose = 4.0f;
+float Kdpitch_pose = 0.02f;
 
-float Kproll = 0.25f;
-float Kiroll = 4.5f;
-float Kdroll = 0.015f;
+float Kproll_pose = 0.2f;
+float Kiroll_pose = 4.0f;
+float Kdroll_pose = 0.015f;
+
+float Kppitch_walk = 0.1f; //0.1
+float Kipitch_walk = 1.0f; // 1.0
+float Kdpitch_walk = 0.01f; //0.01
+
+float Kproll_walk = 0.08f; // 0.08
+float Kiroll_walk = 0.8f; // 0.8
+float Kdroll_walk = 0.01f; // 0.01
 
 
 
@@ -236,8 +245,8 @@ int main(void)
 	Fusion_Init();
 
 	// 7. Init PID
-	PID_Init(&pid_pitch, Kppitch, Kipitch, Kdpitch, 30.0f, 1.2f);
-	PID_Init(&pid_roll,  Kproll, Kiroll, Kdroll, 30.0f, 1.2f);
+	PID_Init(&pid_pitch, Kppitch_walk, Kipitch_walk, Kdpitch_walk, 30.0f, 1.2f);
+	PID_Init(&pid_roll,  Kproll_walk, Kiroll_walk, Kdroll_walk, 30.0f, 1.2f);
 
 	// 8. Init RC
 	BSP_IBUS_Init(&huart4);
@@ -267,10 +276,36 @@ int main(void)
 
 			Fusion_State_t orient = Fusion_Get_Angles();
 
-			if (currentmode == 0) {
-			balance_pitch_output = PID_Compute(&pid_pitch, pitchRef, orient.pitch, 0.005f);
-			balance_roll_output = PID_Compute(&pid_roll, rollRef, orient.roll, 0.005f);
+			static int prevMode = -1;
+			if (currentmode == 1 || currentmode == 3)
+			{
+			    if (currentmode == 1 && prevMode != 1) {
+			        // Entering mode 1
+			        PID_SetGains(&pid_pitch, Kppitch_walk, Kipitch_walk, Kdpitch_walk);
+			        PID_SetGains(&pid_roll,  Kproll_walk, Kiroll_walk, Kdroll_walk);
+
+		            PID_Reset(&pid_pitch);
+		            PID_Reset(&pid_roll);
+
+			    }
+
+			    if (currentmode == 3 && prevMode != 3) {
+			        // Entering mode 3
+			        PID_SetGains(&pid_pitch, Kppitch_pose, Kipitch_pose, Kdpitch_pose);
+			        PID_SetGains(&pid_roll,  Kproll_pose, Kiroll_pose, Kdroll_pose);
+
+		            PID_Reset(&pid_pitch);
+		            PID_Reset(&pid_roll);
+			    }
+
+			    balance_pitch_output = PID_Compute(&pid_pitch, pitchRef,
+			                                       orient.pitch, 0.005f);
+			    balance_roll_output  = PID_Compute(&pid_roll, rollRef,
+			                                       orient.roll, 0.005f);
+			    // Update previous mode at end of loop
+			    prevMode = currentmode;
 			}
+
 
 	  }
 
@@ -279,16 +314,35 @@ int main(void)
 			flag_50hz_gait = 0; // Clear flag
 
 			// Apply Balance Correction
-			if (currentmode == 0) {
+			if (currentmode == 1 || currentmode == 3) {
 				current_pose.pitch = balance_pitch_output;
 				current_pose.roll = balance_roll_output;
 
+				if (currentmode == 3) {
 				Leg_Update_Pose(current_pose);
+				}
 			}
 
-			if (currentmode == 3) {
-			Gait_Update(&robot_gait, &current_pose, joy_stride_x_mm, joy_stride_y_mm, joy_turn_deg, joy_gait, currentmode, 0.02f);
+			if (currentmode == 0 || currentmode == 1 || currentmode == 2) {
+			Gait_Update(&robot_gait, &current_pose, joy_stride_x_mm, joy_stride_y_mm, joy_turn_deg, joy_gait, currentmode, stepHeight, 0.02f);
 //			HAL_GPIO_TogglePin(GPIOA, GPIO_PIN_5);
+			}
+			if (currentmode == 4 && ch5 == 1000) {
+				// 1. Calculate the Time Base (t)
+				// We use system ticks converted to a radian angle
+				float time_base = HAL_GetTick() * 0.002f;
+
+				// 2. Generate Sine Waves
+				// X and Roll are Synced (Sine)
+				current_pose.x = 30.0f * sinf(time_base);
+				current_pose.roll = 15.0f * sinf(time_base);
+
+				// Y and Pitch are Synced (Cosine)
+				// Cosine is just Sine shifted by 90 degrees
+				current_pose.y = 30.0f * cosf(time_base);
+				current_pose.pitch = 15.0f * cosf(time_base);
+
+			Gait_Update(&robot_gait, &current_pose, joy_stride_x_mm, joy_stride_y_mm, joy_turn_deg, joy_gait, currentmode, stepHeight, 0.02f);
 			}
 		}
 
@@ -301,7 +355,7 @@ int main(void)
 			if ((now - last_button_press) > 300) // 300ms cooldown
 					{
 				currentmode++;
-				if (currentmode > 3)
+				if (currentmode > 4)
 					currentmode = 0;
 
 				last_button_press = now;
@@ -333,18 +387,22 @@ int main(void)
 			}
 
 			// --- 4. EXECUTE MODES ---
-			if (currentmode == 0 || currentmode == 1)
+			if (currentmode == 0 || currentmode == 1 || currentmode == 4)
 					{
 				// Reset Pose Angles (Keep body flat while walking)
 				current_pose.roll = 0;
 				current_pose.pitch = 0;
 				current_pose.yaw = 0;
 
+				current_pose.x = 0;
+				current_pose.y = 0;
+
 				// Mapping
 				float walkX = Map_Float((float) ch1, 1000.0f, 2000.0f, -60.0f, 60.0f);
 				float walkY = Map_Float((float) ch2, 1119.0f, 2000.0f, -60.0f, 60.0f);
-				float transY = Map_Float((float) ch5, 1000.0f, 2000.0f, -40.0f, 40.0f);
-				float turn_deg = Map_Float((float) ch4, 1000.0f, 2000.0f, -15.0f, 15.0f);
+//				float transY = Map_Float((float) ch5, 1000.0f, 2000.0f, -40.0f, 40.0f);
+				stepHeight = Map_Float((float) ch5, 1000.0f, 2000.0f, 20.0f, 100.0f);
+				float turn_deg = Map_Float((float) ch4, 1000.0f, 2000.0f, -25.0f, 25.0f);
 
 				// Apply Deadzones & Update Globals
 				joy_stride_x_mm = Apply_Deadzone(walkX, 10.0f);
@@ -353,7 +411,7 @@ int main(void)
 
 				// Pose Mappings (Height & Body Shift)
 				current_pose.z = Map_Float((float) ch3, 1118.0f, 2000.0f, 0.0f, -150.0f);
-				current_pose.y = Apply_Deadzone(transY, 5.0f);
+//				current_pose.y = Apply_Deadzone(transY, 5.0f);
 
 				// Speed Mapping
 				robot_gait.ground_speed = Map_Float((float) ch6, 1000.0f, 2000.0f, 0.0f, 1.0f);
@@ -373,19 +431,19 @@ int main(void)
 				current_pose.z = Map_Float((float) ch6, 1000.0f, 2000.0f, 0.0f, -150.0f);
 
 				// Rotation Mappings (With manual trim offsets)
-				current_pose.roll = Map_Float((float) ch1, 1000.0f, 2000.0f, -30.0f, 30.0f) - 0.4f;
-				current_pose.pitch = Map_Float((float) ch2, 1119.0f, 2000.0f, -30.0f, 30.0f) - 4.0f;
+				current_pose.roll = Map_Float((float) ch1, 1000.0f, 2000.0f, -15.0f, 15.0f) - 0.4f;
+				current_pose.pitch = Map_Float((float) ch2, 1119.0f, 2000.0f, -15.0f, 15.0f) - 4.0f;
 				current_pose.yaw = Map_Float((float) ch5, 1000.0f, 2000.0f, -30.0f, 30.0f);
 			}
 		}
 
-		ori = Fusion_Get_Angles();
+//		ori = Fusion_Get_Angles();
 
 
 //	  Leg_Set_Angle_Smoothly(Leg, joint, Servo_Get_Current(Leg, joint), angle, debug_speed, dt) ;
 //	  Leg_Move_To_XYZ_Smoothly(Leg, x, y, z, debug_speed, dt);
 //	  Leg_Update_Pose(test_pose);
-//		            __HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_3, pulse_us);
+//		            __HAL_TIM_SET_COMPARE(&htim8, TIM_CHANNEL_1, pulse_us);
 //		            Leg_Set_Angle(leg, joint, angle) ;
 
 

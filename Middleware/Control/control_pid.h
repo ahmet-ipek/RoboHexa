@@ -32,4 +32,7 @@ void PID_Reset(PID_Controller_t *pid);
 // Compute correction. Call this at a fixed rate (e.g. 200Hz)
 float PID_Compute(PID_Controller_t *pid, float target, float measured, float dt);
 
+// Update gains without resetting internal state
+void PID_SetGains(PID_Controller_t *pid, float kp, float ki, float kd);
+
 #endif

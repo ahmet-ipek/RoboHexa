@@ -10,7 +10,7 @@
 
 // --- TUNING CONSTANTS ---
 #define BODY_HEIGHT_MM    100.0f  // Standard Walking Height
-#define STEP_HEIGHT_MM    40.0f   // How high the foot lifts
+//#define STEP_HEIGHT_MM    20.0f   // How high the foot lifts
 #define STANCE_RADIUS     120.0f  // Radius for turn calculations
 
 
@@ -66,6 +66,6 @@ void Gait_Init(Gait_State_t *state);
  * @param  walking_mode  Walking mode selector
  * @param  dt          Delta Time (seconds)
  */
-void Gait_Update(Gait_State_t *state, BodyPose_t *cmd_pose, float cmd_stride_x, float cmd_stride_y, float cmd_turn_deg, GaitType_e gait_type, Walking_Mode_e walking_mode, float dt);
+void Gait_Update(Gait_State_t *state, BodyPose_t *cmd_pose, float cmd_stride_x, float cmd_stride_y, float cmd_turn_deg, GaitType_e gait_type, Walking_Mode_e walking_mode,float STEP_HEIGHT_MM, float dt);
 
 #endif /* GAIT_SCHEDULER_H */

@@ -34,6 +34,12 @@ void PID_Reset(PID_Controller_t *pid) {
     pid->integral_sum = 0.0f;
 }
 
+void PID_SetGains(PID_Controller_t *pid, float kp, float ki, float kd) {
+    pid->Kp = kp;
+    pid->Ki = ki;
+    pid->Kd = kd;
+}
+
 float PID_Compute(PID_Controller_t *pid, float target, float measured, float dt) {
     // 1. Calculate Error
     float error = target - measured;

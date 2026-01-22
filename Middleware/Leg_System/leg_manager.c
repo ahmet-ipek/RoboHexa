@@ -26,7 +26,7 @@ typedef struct {
 // [Leg 0-5][Coxa, Femur, Tibia]
 static const Servo_Config_t servo_config[6][3] = {
     // Leg 0 (RF)
-    { {11.39f, -8.0f}, {-10.67f, -20.0f}, {11.61f, 80.0f} }, // Calibration done leg is ready for inverse kinematics
+    { {11.39f, -8.0f}, {-11.11f, -2.0f}, {11.61f, 80.0f} }, // Calibration done leg is ready for inverse kinematics
     // Leg 1 (LF)
     { {10.83f, 22.0f}, {11.22f, -35.0f}, {-10.1f, 90.0f} }, // Calibration done leg is ready for inverse kinematics
     // Leg 2 (RM)
@@ -36,7 +36,7 @@ static const Servo_Config_t servo_config[6][3] = {
     // Leg 4 (RB)
     { {11.39f, 0.0f}, {-10.78f, -24.0f}, {11.11f, 92.0f} }, // Calibration done leg is ready for inverse kinematics
     // Leg 5 (LB)
-    { {11.11f, -5.0f}, {11.67f, 0.0f}, {-10.83f, 60.0f} } // Calibration done leg is ready for inverse kinematics
+    { {11.11f, -5.0f}, {10.55f, -2.0f}, {-10.83f, 60.0f} } // Calibration done leg is ready for inverse kinematics
 };
 
 /**
