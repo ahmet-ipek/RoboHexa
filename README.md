@@ -253,7 +253,7 @@ Ground Sensors → Gait Engine → Adaptive Height Adjustment
 
 **Questions or Collaboration?**
 - **Email**: heisipek@gmail.com
-- **LinkedIn**: [Ahmet ipek]([https://www.linkedin.com/in/ahmet-ipek-a02287217/])
+- **LinkedIn**: https://www.linkedin.com/in/ahmet-ipek-a02287217/
 
 ---
 
